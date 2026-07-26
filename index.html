@@ -153,90 +153,149 @@ button.ui:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 </div>
 
 <script id="engine">
-/* ============ 象棋引擎（純邏輯，不碰畫面） ============ */
+/* ============ 象棋引擎 v2 ============ */
 const K=1,A=2,E=3,N=4,R=5,C=6,P=7;
-const VAL=[0,6000,200,200,400,900,450,100];
+const VAL=[0,6000,250,250,450,1000,500,110];
 const NAME_R=['','帥','仕','相','傌','俥','炮','兵'];
 const NAME_B=['','將','士','象','馬','車','砲','卒'];
-const MATE=50000, INF=1e9;
+const MATE=50000, INF=1e9, MAXPLY=64;
 
 let B=new Uint8Array(90);
-let kingSq=[0,0];              // 0=紅, 1=黑
+let kingSq=[0,0];
+let bigCnt=[0,0];
 
 const sideIdx=p=>p<8?0:1;
 const typeOf=p=>p&7;
 
-const LAYOUT=[
- R,N,E,A,K,A,E,N,R,
- 0,0,0,0,0,0,0,0,0,
- 0,C,0,0,0,0,0,C,0,
- P,0,P,0,P,0,P,0,P,
- 0,0,0,0,0,0,0,0,0,
- 0,0,0,0,0,0,0,0,0,
- P,0,P,0,P,0,P,0,P,
- 0,C,0,0,0,0,0,C,0,
- 0,0,0,0,0,0,0,0,0,
- R,N,E,A,K,A,E,N,R];
+/* ---- 位置價值表（紅方視角，第0列為對方底線）---- */
+const PST_P=[
+   0,  3,  6,  9, 12,  9,  6,  3,  0,
+  18, 36, 56, 80,120, 80, 56, 36, 18,
+  14, 26, 42, 60, 80, 60, 42, 26, 14,
+  10, 20, 30, 34, 40, 34, 30, 20, 10,
+   6, 12, 18, 18, 20, 18, 18, 12,  6,
+   2,  0,  8,  0,  8,  0,  8,  0,  2,
+   0,  0, -2,  0,  4,  0, -2,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0];
+const PST_N=[
+   0, -4,  0,  0,  0,  0,  0, -4,  0,
+   0,  2,  4,  4,  2,  4,  4,  2,  0,
+   4,  2,  8, 10, 12, 10,  8,  2,  4,
+   2,  4, 10, 14, 16, 14, 10,  4,  2,
+   2,  6, 12, 14, 18, 14, 12,  6,  2,
+   2,  6, 12, 14, 16, 14, 12,  6,  2,
+   0,  4,  8, 10, 12, 10,  8,  4,  0,
+   0,  2,  4,  8, 10,  8,  4,  2,  0,
+   0,  2,  4,  4,  4,  4,  4,  2,  0,
+   0, -4,  2,  2,  2,  2,  2, -4,  0];
+const PST_R=[
+  12, 14, 14, 16, 18, 16, 14, 14, 12,
+  14, 16, 16, 18, 20, 18, 16, 16, 14,
+  12, 14, 14, 18, 20, 18, 14, 14, 12,
+  12, 16, 16, 20, 22, 20, 16, 16, 12,
+  12, 14, 14, 18, 20, 18, 14, 14, 12,
+  12, 16, 16, 18, 20, 18, 16, 16, 12,
+  10, 14, 14, 16, 18, 16, 14, 14, 10,
+  10, 12, 12, 14, 16, 14, 12, 12, 10,
+   8, 10, 10, 12, 14, 12, 10, 10,  8,
+   6,  8,  8, 12, 14, 12,  8,  8,  6];
+const PST_C=[
+   0,  0,  2,  6,  6,  6,  2,  0,  0,
+   0,  2,  4,  6,  6,  6,  4,  2,  0,
+   4,  0,  8,  6, 10,  6,  8,  0,  4,
+   0,  0,  0,  2,  4,  2,  0,  0,  0,
+  -2,  0,  4,  2,  6,  2,  4,  0, -2,
+   0,  0,  0,  2,  8,  2,  0,  0,  0,
+   0,  0, -2,  4, 10,  4, -2,  0,  0,
+   2,  2,  0, -2, -4, -2,  0,  2,  2,
+   2,  2,  0, -4, -6, -4,  0,  2,  2,
+   0,  0,  2,  6,  6,  6,  2,  0,  0];
 
+const LAYOUT=[
+ R,N,E,A,K,A,E,N,R, 0,0,0,0,0,0,0,0,0,
+ 0,C,0,0,0,0,0,C,0, P,0,P,0,P,0,P,0,P,
+ 0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,
+ P,0,P,0,P,0,P,0,P, 0,C,0,0,0,0,0,C,0,
+ 0,0,0,0,0,0,0,0,0, R,N,E,A,K,A,E,N,R];
+
+/* ---- Zobrist ---- */
+const zk1=new Int32Array(16*90), zk2=new Int32Array(16*90);
+let sk1=0, sk2=0, h1=0, h2=0;
+(function(){
+  let s=88172645;
+  const rnd=()=>{ s^=s<<13; s|=0; s^=s>>>17; s^=s<<5; s|=0; return s; };
+  for(let i=0;i<16*90;i++){ zk1[i]=rnd(); zk2[i]=rnd(); }
+  sk1=rnd(); sk2=rnd();
+})();
+function computeHash(){
+  h1=0;h2=0;
+  for(let i=0;i<90;i++){ const p=B[i]; if(p){ h1^=zk1[p*90+i]; h2^=zk2[p*90+i]; } }
+}
+function recount(){
+  bigCnt[0]=bigCnt[1]=0;
+  for(let i=0;i<90;i++){ const p=B[i]; if(!p) continue; const t=p&7;
+    if(t===R||t===N||t===C) bigCnt[sideIdx(p)]++; }
+  for(let i=0;i<90;i++){ const p=B[i]; if(p&&(p&7)===K) kingSq[sideIdx(p)]=i; }
+}
 function setupInitial(){
-  for(let i=0;i<90;i++){
-    const v=LAYOUT[i];
-    B[i]= v===0 ? 0 : (i<45 ? v+8 : v);
-  }
-  kingSq[0]=9*9+4; kingSq[1]=0*9+4;
+  for(let i=0;i<90;i++){ const v=LAYOUT[i]; B[i]= v===0?0:(i<45? v+8 : v); }
+  recount(); computeHash();
 }
 
+/* ---- 走法產生 ---- */
 const ORT=[[-1,0],[1,0],[0,-1],[0,1]];
 const HD=[[-2,-1],[-2,1],[-1,-2],[1,-2],[-1,2],[1,2],[2,-1],[2,1]];
 const HL=[[-1,0],[-1,0],[0,-1],[0,-1],[0,1],[0,1],[1,0],[1,0]];
 const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]];
 const ELE=[[-2,-2],[-2,2],[2,-2],[2,2]];
-
 const inB=(r,c)=>r>=0&&r<10&&c>=0&&c<9;
 const inPalace=(r,c,s)=>c>=3&&c<=5&&(s===0? r>=7&&r<=9 : r>=0&&r<=2);
 
-function slide(i,r,c,side,out,cannon){
-  for(let d=0;d<4;d++){
-    const dr=ORT[d][0],dc=ORT[d][1];
-    let nr=r+dr,nc=c+dc,screen=false;
-    while(inB(nr,nc)){
-      const q=B[nr*9+nc];
-      if(!cannon){
-        if(!q) out.push(i*90+nr*9+nc);
-        else{ if(sideIdx(q)!==side) out.push(i*90+nr*9+nc); break; }
-      }else{
-        if(!screen){ if(!q) out.push(i*90+nr*9+nc); else screen=true; }
-        else if(q){ if(sideIdx(q)!==side) out.push(i*90+nr*9+nc); break; }
-      }
-      nr+=dr;nc+=dc;
-    }
-  }
-}
+const MVBUF=new Int32Array(MAXPLY*160);
+const MSBUF=new Int32Array(MAXPLY*160);
 
-function genMoves(side,out){
-  out.length=0;
+function genInto(side, base){
+  let n=0;
   for(let i=0;i<90;i++){
     const p=B[i]; if(!p||sideIdx(p)!==side) continue;
-    const r=(i/9)|0,c=i%9,t=typeOf(p);
-    if(t===R){ slide(i,r,c,side,out,false); }
-    else if(t===C){ slide(i,r,c,side,out,true); }
+    const r=(i/9)|0, c=i%9, t=p&7;
+    if(t===R||t===C){
+      const cannon=(t===C);
+      for(let d=0;d<4;d++){
+        const dr=ORT[d][0],dc=ORT[d][1];
+        let nr=r+dr,nc=c+dc,screen=false;
+        while(inB(nr,nc)){
+          const q=B[nr*9+nc];
+          if(!cannon){
+            if(!q) MVBUF[base+n++]=i*90+nr*9+nc;
+            else{ if(sideIdx(q)!==side) MVBUF[base+n++]=i*90+nr*9+nc; break; }
+          }else{
+            if(!screen){ if(!q) MVBUF[base+n++]=i*90+nr*9+nc; else screen=true; }
+            else if(q){ if(sideIdx(q)!==side) MVBUF[base+n++]=i*90+nr*9+nc; break; }
+          }
+          nr+=dr;nc+=dc;
+        }
+      }
+    }
     else if(t===N){
       for(let k=0;k<8;k++){
         const nr=r+HD[k][0],nc=c+HD[k][1];
         if(!inB(nr,nc)) continue;
         if(B[(r+HL[k][0])*9+(c+HL[k][1])]) continue;
         const q=B[nr*9+nc]; if(q&&sideIdx(q)===side) continue;
-        out.push(i*90+nr*9+nc);
+        MVBUF[base+n++]=i*90+nr*9+nc;
       }
     }
     else if(t===E){
       for(let k=0;k<4;k++){
         const nr=r+ELE[k][0],nc=c+ELE[k][1];
         if(!inB(nr,nc)) continue;
-        if(side===0? nr<5 : nr>4) continue;           // 象不過河
-        if(B[(r+ELE[k][0]/2)*9+(c+ELE[k][1]/2)]) continue;  // 塞象眼
+        if(side===0? nr<5 : nr>4) continue;
+        if(B[(r+ELE[k][0]/2)*9+(c+ELE[k][1]/2)]) continue;
         const q=B[nr*9+nc]; if(q&&sideIdx(q)===side) continue;
-        out.push(i*90+nr*9+nc);
+        MVBUF[base+n++]=i*90+nr*9+nc;
       }
     }
     else if(t===A){
@@ -244,7 +303,7 @@ function genMoves(side,out){
         const nr=r+DIAG[k][0],nc=c+DIAG[k][1];
         if(!inPalace(nr,nc,side)) continue;
         const q=B[nr*9+nc]; if(q&&sideIdx(q)===side) continue;
-        out.push(i*90+nr*9+nc);
+        MVBUF[base+n++]=i*90+nr*9+nc;
       }
     }
     else if(t===K){
@@ -252,30 +311,30 @@ function genMoves(side,out){
         const nr=r+ORT[k][0],nc=c+ORT[k][1];
         if(!inPalace(nr,nc,side)) continue;
         const q=B[nr*9+nc]; if(q&&sideIdx(q)===side) continue;
-        out.push(i*90+nr*9+nc);
+        MVBUF[base+n++]=i*90+nr*9+nc;
       }
-      for(const dr of [-1,1]){                        // 白臉將：可吃對方將
+      for(const dr of [-1,1]){
         let nr=r+dr;
         while(inB(nr,c)){
           const q=B[nr*9+c];
-          if(q){ if(sideIdx(q)!==side&&typeOf(q)===K) out.push(i*90+nr*9+c); break; }
+          if(q){ if(sideIdx(q)!==side&&(q&7)===K) MVBUF[base+n++]=i*90+nr*9+c; break; }
           nr+=dr;
         }
       }
     }
-    else if(t===P){
+    else{
       const fw = side===0? -1 : 1;
       const nr=r+fw;
-      if(inB(nr,c)){ const q=B[nr*9+c]; if(!q||sideIdx(q)!==side) out.push(i*90+nr*9+c); }
-      const crossed = side===0? r<=4 : r>=5;
-      if(crossed){
+      if(inB(nr,c)){ const q=B[nr*9+c]; if(!q||sideIdx(q)!==side) MVBUF[base+n++]=i*90+nr*9+c; }
+      if(side===0? r<=4 : r>=5){
         for(const dc of [-1,1]){
           const nc=c+dc; if(!inB(r,nc)) continue;
-          const q=B[r*9+nc]; if(!q||sideIdx(q)!==side) out.push(i*90+r*9+nc);
+          const q=B[r*9+nc]; if(!q||sideIdx(q)!==side) MVBUF[base+n++]=i*90+r*9+nc;
         }
       }
     }
   }
+  return n;
 }
 
 function isAttacked(sq,by){
@@ -288,13 +347,13 @@ function isAttacked(sq,by){
       if(q){
         if(!screen){
           if(sideIdx(q)===by){
-            const t=typeOf(q);
+            const t=q&7;
             if(t===R) return true;
             if(t===K){ if(dc===0) return true; if(Math.abs(nr-r)+Math.abs(nc-c)===1) return true; }
           }
           screen=true;
         }else{
-          if(sideIdx(q)===by&&typeOf(q)===C) return true;
+          if(sideIdx(q)===by&&(q&7)===C) return true;
           break;
         }
       }
@@ -305,137 +364,245 @@ function isAttacked(sq,by){
     const nr=r+HD[k][0],nc=c+HD[k][1];
     if(!inB(nr,nc)) continue;
     const q=B[nr*9+nc];
-    if(!q||sideIdx(q)!==by||typeOf(q)!==N) continue;
+    if(!q||sideIdx(q)!==by||(q&7)!==N) continue;
     let lr,lc;
     if(Math.abs(HD[k][0])===2){ lr=nr+(r>nr?1:-1); lc=nc; }
     else { lr=nr; lc=nc+(c>nc?1:-1); }
     if(!B[lr*9+lc]) return true;
   }
   const back = by===0? r+1 : r-1;
-  if(inB(back,c)){ const q=B[back*9+c]; if(q&&sideIdx(q)===by&&typeOf(q)===P) return true; }
+  if(inB(back,c)){ const q=B[back*9+c]; if(q&&sideIdx(q)===by&&(q&7)===P) return true; }
   if(by===0? r<=4 : r>=5){
     for(const dc of [-1,1]){
       const nc=c+dc; if(!inB(r,nc)) continue;
-      const q=B[r*9+nc]; if(q&&sideIdx(q)===by&&typeOf(q)===P) return true;
+      const q=B[r*9+nc]; if(q&&sideIdx(q)===by&&(q&7)===P) return true;
     }
   }
   return false;
 }
 
 function make(mv){
-  const from=(mv/90)|0,to=mv%90,cap=B[to];
-  B[to]=B[from]; B[from]=0;
-  if(typeOf(B[to])===K) kingSq[sideIdx(B[to])]=to;
+  const from=(mv/90)|0,to=mv%90,cap=B[to],pc=B[from];
+  if(cap){
+    h1^=zk1[cap*90+to]; h2^=zk2[cap*90+to];
+    const ct=cap&7; if(ct===R||ct===N||ct===C) bigCnt[sideIdx(cap)]--;
+  }
+  h1^=zk1[pc*90+from]^zk1[pc*90+to]^sk1;
+  h2^=zk2[pc*90+from]^zk2[pc*90+to]^sk2;
+  B[to]=pc; B[from]=0;
+  if((pc&7)===K) kingSq[sideIdx(pc)]=to;
   return cap;
 }
 function unmake(mv,cap){
-  const from=(mv/90)|0,to=mv%90;
-  B[from]=B[to]; B[to]=cap;
-  if(typeOf(B[from])===K) kingSq[sideIdx(B[from])]=from;
+  const from=(mv/90)|0,to=mv%90,pc=B[to];
+  h1^=zk1[pc*90+from]^zk1[pc*90+to]^sk1;
+  h2^=zk2[pc*90+from]^zk2[pc*90+to]^sk2;
+  if(cap){
+    h1^=zk1[cap*90+to]; h2^=zk2[cap*90+to];
+    const ct=cap&7; if(ct===R||ct===N||ct===C) bigCnt[sideIdx(cap)]++;
+  }
+  B[from]=pc; B[to]=cap;
+  if((pc&7)===K) kingSq[sideIdx(pc)]=from;
 }
 
 function legalMoves(side){
-  const ps=[],res=[]; genMoves(side,ps);
-  for(let i=0;i<ps.length;i++){
-    const cap=make(ps[i]);
-    if(!isAttacked(kingSq[side],side^1)) res.push(ps[i]);
-    unmake(ps[i],cap);
+  const n=genInto(side,0), res=[];
+  const buf=[]; for(let i=0;i<n;i++) buf.push(MVBUF[i]);
+  for(const mv of buf){
+    const cap=make(mv);
+    if(!isAttacked(kingSq[side],side^1)) res.push(mv);
+    unmake(mv,cap);
   }
   return res;
 }
 function inCheck(side){ return isAttacked(kingSq[side],side^1); }
 
+/* ---- 局面評估 ---- */
 function evaluate(side){
   let s=0;
+  const adv=[0,0], ele=[0,0], rk=[0,0], cn=[0,0];
   for(let i=0;i<90;i++){
     const p=B[i]; if(!p) continue;
-    const t=typeOf(p),red=p<8,r=(i/9)|0,c=i%9;
-    const ar = red? r : 9-r;             // 9 = 自家底線
+    const red=p<8, t=p&7, si=red?0:1;
+    const j = red? i : (89-i);
     let v=VAL[t];
-    if(t===P){ if(ar<=4) v += 70 + (4-ar)*12 - Math.abs(c-4)*4; }
-    else if(t===N){ v += 16 - 3*Math.abs(c-4) + (9-ar)*3; }
-    else if(t===R){ v += 8 + (9-ar)*2; }
-    else if(t===C){ v += (Math.abs(c-4)<=1? 14:0) + (ar===9? 6:0); }
-    else if(t===K){ if(c!==4||ar!==9) v -= 45; }        // 將帥沒事別亂動
-    else if(t===A||t===E){ if(ar===9) v += 10; }        // 士象守住原位
+    if(t===P) v+=PST_P[j];
+    else if(t===N) v+=PST_N[j];
+    else if(t===R){ v+=PST_R[j]; rk[si]++; }
+    else if(t===C){ v+=PST_C[j]; cn[si]++; }
+    else if(t===A) adv[si]++;
+    else if(t===E) ele[si]++;
     s += red? v : -v;
+  }
+  for(let si=0;si<2;si++){
+    let pen=0;
+    if(adv[si]<2) pen += (2-adv[si])*(rk[si^1]>0? 45:15);   // 缺士怕車
+    if(ele[si]<2) pen += (2-ele[si])*(cn[si^1]>0? 40:12);   // 缺象怕炮
+    s += si===0? -pen : pen;
   }
   return side===0? s : -s;
 }
 
-let deadline=0,aborted=false,nodes=0;
-function order(ms){
-  const sc=new Map();
-  for(const mv of ms){
-    const cap=B[mv%90], mover=B[(mv/90)|0];
-    sc.set(mv, cap? VAL[typeOf(cap)]*10 - VAL[typeOf(mover)] : 0);
+/* ---- 置換表與啟發式 ---- */
+const TT_BITS=20, TT_SIZE=1<<TT_BITS, TT_MASK=TT_SIZE-1;
+const ttLock=new Int32Array(TT_SIZE);
+const ttMv=new Int32Array(TT_SIZE);
+const ttSc=new Int32Array(TT_SIZE);
+const ttDp=new Int8Array(TT_SIZE);
+const ttFl=new Uint8Array(TT_SIZE);
+const killer=new Int32Array(MAXPLY*2);
+const hist=new Int32Array(8100);
+
+let deadline=0, aborted=false, nodes=0;
+function now(){ return (typeof performance!=='undefined')? performance.now() : Date.now(); }
+
+function scoreMoves(base,n,ttm,ply){
+  const k1=killer[ply*2], k2=killer[ply*2+1];
+  for(let i=0;i<n;i++){
+    const mv=MVBUF[base+i], cap=B[mv%90];
+    let s;
+    if(mv===ttm) s=1<<28;
+    else if(cap) s=(1<<22)+VAL[cap&7]*16-VAL[B[(mv/90)|0]&7];
+    else if(mv===k1) s=1<<20;
+    else if(mv===k2) s=(1<<20)-1;
+    else s=hist[mv];
+    MSBUF[base+i]=s;
   }
-  ms.sort((a,b)=>sc.get(b)-sc.get(a));
+}
+function pickBest(base,n,i){
+  let bi=i, bs=MSBUF[base+i];
+  for(let j=i+1;j<n;j++) if(MSBUF[base+j]>bs){ bs=MSBUF[base+j]; bi=j; }
+  if(bi!==i){
+    let t=MVBUF[base+i]; MVBUF[base+i]=MVBUF[base+bi]; MVBUF[base+bi]=t;
+    t=MSBUF[base+i]; MSBUF[base+i]=MSBUF[base+bi]; MSBUF[base+bi]=t;
+  }
 }
 
-function qsearch(alpha,beta,side){
-  let stand=evaluate(side);
-  if(stand>=beta) return beta;
-  if(stand>alpha) alpha=stand;
-  const ps=[]; genMoves(side,ps);
-  const caps=ps.filter(mv=>B[mv%90]!==0);
-  order(caps);
-  for(const mv of caps){
+function qsearch(alpha,beta,side,ply){
+  if(((++nodes)&1023)===0 && now()>deadline) aborted=true;
+  if(aborted||ply>=MAXPLY-2) return evaluate(side);
+  const chk=isAttacked(kingSq[side],side^1);
+  let best=-INF;
+  if(!chk){
+    best=evaluate(side);
+    if(best>=beta) return best;
+    if(best>alpha) alpha=best;
+  }
+  const base=ply*160, n=genInto(side,base);
+  scoreMoves(base,n,0,ply);
+  let legal=0;
+  for(let i=0;i<n;i++){
+    pickBest(base,n,i);
+    const mv=MVBUF[base+i];
+    if(!chk && !B[mv%90]) continue;            // 非將軍時只搜吃子
     const cap=make(mv);
     if(isAttacked(kingSq[side],side^1)){ unmake(mv,cap); continue; }
-    const sc=-qsearch(-beta,-alpha,side^1);
-    unmake(mv,cap);
-    if(sc>=beta) return beta;
-    if(sc>alpha) alpha=sc;
-  }
-  return alpha;
-}
-
-function negamax(depth,alpha,beta,side,ply){
-  if(((++nodes)&511)===0 && now()>deadline) aborted=true;
-  if(aborted) return 0;
-  if(depth<=0) return qsearch(alpha,beta,side);
-  const ms=legalMoves(side);
-  if(ms.length===0) return -MATE+ply;      // 象棋中被將死或困斃皆判負
-  order(ms);
-  for(const mv of ms){
-    const cap=make(mv);
-    const sc=-negamax(depth-1,-beta,-alpha,side^1,ply+1);
+    legal++;
+    const s=-qsearch(-beta,-alpha,side^1,ply+1);
     unmake(mv,cap);
     if(aborted) return 0;
-    if(sc>=beta) return beta;
-    if(sc>alpha) alpha=sc;
+    if(s>best){ best=s; if(s>alpha){ alpha=s; if(s>=beta) return s; } }
   }
-  return alpha;
+  if(chk && legal===0) return -MATE+ply;
+  return best;
 }
 
-function now(){ return (typeof performance!=='undefined')? performance.now() : Date.now(); }
+function negamax(depth,alpha,beta,side,ply,canNull){
+  if(((++nodes)&1023)===0 && now()>deadline) aborted=true;
+  if(aborted) return 0;
+  if(ply>=MAXPLY-2) return evaluate(side);
+
+  const chk=isAttacked(kingSq[side],side^1);
+  if(chk) depth++;                                   // 將軍延伸
+  if(depth<=0) return qsearch(alpha,beta,side,ply);
+
+  const idx=h1&TT_MASK;
+  let ttm=0;
+  if(ttLock[idx]===h2){
+    ttm=ttMv[idx];
+    if(ttDp[idx]>=depth){
+      let s=ttSc[idx];
+      if(s>MATE-1000) s-=ply; else if(s<-MATE+1000) s+=ply;
+      const f=ttFl[idx];
+      if(f===1) return s;
+      if(f===2 && s>=beta) return s;
+      if(f===3 && s<=alpha) return s;
+    }
+  }
+
+  if(canNull && !chk && depth>=3 && bigCnt[side]>0 && Math.abs(beta)<MATE-1000){
+    h1^=sk1; h2^=sk2;
+    const s=-negamax(depth-3,-beta,-beta+1,side^1,ply+1,false);
+    h1^=sk1; h2^=sk2;
+    if(aborted) return 0;
+    if(s>=beta) return beta;
+  }
+
+  const base=ply*160, n=genInto(side,base);
+  scoreMoves(base,n,ttm,ply);
+  let best=-INF, bestMove=0, legal=0, flag=3;
+  for(let i=0;i<n;i++){
+    pickBest(base,n,i);
+    const mv=MVBUF[base+i];
+    const cap=make(mv);
+    if(isAttacked(kingSq[side],side^1)){ unmake(mv,cap); continue; }
+    legal++;
+    let s;
+    if(legal===1) s=-negamax(depth-1,-beta,-alpha,side^1,ply+1,true);
+    else{
+      s=-negamax(depth-1,-alpha-1,-alpha,side^1,ply+1,true);
+      if(!aborted && s>alpha && s<beta) s=-negamax(depth-1,-beta,-alpha,side^1,ply+1,true);
+    }
+    unmake(mv,cap);
+    if(aborted) return 0;
+    if(s>best){
+      best=s; bestMove=mv;
+      if(s>alpha){
+        alpha=s; flag=1;
+        if(s>=beta){
+          flag=2;
+          if(!cap){
+            if(killer[ply*2]!==mv){ killer[ply*2+1]=killer[ply*2]; killer[ply*2]=mv; }
+            hist[mv]+=depth*depth;
+            if(hist[mv]>(1<<19)) for(let z=0;z<8100;z++) hist[z]>>=1;
+          }
+          break;
+        }
+      }
+    }
+  }
+  if(legal===0) return -MATE+ply;                    // 將死或困斃皆負
+
+  let st=best;
+  if(st>MATE-1000) st+=ply; else if(st<-MATE+1000) st-=ply;
+  ttLock[idx]=h2; ttMv[idx]=bestMove; ttSc[idx]=st; ttDp[idx]=depth; ttFl[idx]=flag;
+  return best;
+}
 
 function searchBest(side,maxDepth,timeMs){
   deadline=now()+timeMs; aborted=false; nodes=0;
-  const ms=legalMoves(side);
-  if(!ms.length) return null;
-  order(ms);
-  let best=ms[0],bestScore=-INF,list=null;
+  killer.fill(0);
+  const roots=legalMoves(side);
+  if(!roots.length) return null;
+  let best=roots[0], bestScore=0, list=null, reached=0;
   for(let d=1;d<=maxDepth;d++){
-    let alpha=-INF,cur=best,curScore=-INF;
-    const ordered=[best,...ms.filter(m=>m!==best)];
-    const acc=[];
+    let alpha=-INF, cur=best, curScore=-INF;
+    const acc=[], ordered=[best].concat(roots.filter(m=>m!==best));
     for(const mv of ordered){
       const cap=make(mv);
-      let sc=-negamax(d-1,-INF,-alpha,side^1,1);
+      const s=-negamax(d-1,-INF,-alpha,side^1,1,true);
       unmake(mv,cap);
       if(aborted) break;
-      if(Math.abs(sc)<MATE-500) sc += (Math.random()*7|0)-3;   // 打散完全相同的選擇
-      acc.push([mv,sc]);
-      if(sc>curScore){curScore=sc;cur=mv;}
-      if(sc>alpha) alpha=sc;
+      acc.push([mv,s]);
+      if(s>curScore){ curScore=s; cur=mv; }
+      if(s>alpha) alpha=s;
     }
     if(aborted) break;
-    best=cur; bestScore=curScore; list=acc;
-    if(bestScore>MATE-200) break;
+    best=cur; bestScore=curScore; list=acc; reached=d;
+    if(bestScore>MATE-500) break;
+    if(now()>deadline) break;
   }
-  return {mv:best,score:bestScore,list:list||[[best,bestScore]]};
+  return {mv:best, score:bestScore, list:list||[[best,0]], depth:reached, nodes};
 }
 
 /* ---- 中文記譜 ---- */
@@ -444,13 +611,13 @@ const fileNo=(c,side)=> side===0? 9-c : c+1;
 const numStr=(n,side)=> side===0? CN[n] : String(n);
 function moveToChinese(mv){
   const from=(mv/90)|0,to=mv%90,p=B[from];
-  const side=sideIdx(p),t=typeOf(p);
+  const side=sideIdx(p),t=p&7;
   const fr=(from/9)|0,fc=from%9,tr=(to/9)|0,tc=to%9;
   const nm=(side===0?NAME_R:NAME_B)[t];
   let prefix='';
   if(t!==K&&t!==A&&t!==E){
     const same=[];
-    for(let r=0;r<10;r++){ const q=B[r*9+fc]; if(q&&sideIdx(q)===side&&typeOf(q)===t) same.push(r); }
+    for(let r=0;r<10;r++){ const q=B[r*9+fc]; if(q&&sideIdx(q)===side&&(q&7)===t) same.push(r); }
     if(same.length>1){
       same.sort((a,b)=> side===0? a-b : b-a);
       const i=same.indexOf(fr);
@@ -464,18 +631,48 @@ function moveToChinese(mv){
   return base+(fwd?'進':'退')+numStr(Math.abs(tr-fr),side);
 }
 
-if(typeof module!=='undefined') module.exports={B,setupInitial,legalMoves,genMoves,make,unmake,searchBest,moveToChinese,inCheck,kingSq,typeOf,sideIdx};
+function setBoard(arr){ B.set(arr); recount(); computeHash(); }
+
+if(typeof module!=='undefined') module.exports={
+  B,setupInitial,setBoard,legalMoves,make,unmake,searchBest,moveToChinese,
+  inCheck,kingSq,evaluate,MATE,NAME_R,NAME_B};
+
 </script>
 
 <script id="ui">
 /* ============ 畫面與互動 ============ */
 const $=id=>document.getElementById(id);
 const LEVELS=[
-  {name:'新手', depth:2, time:250,  slack:280, blunder:.28},
-  {name:'初級', depth:3, time:900,  slack:70,  blunder:.06},
-  {name:'中級', depth:5, time:2000, slack:0,   blunder:0}
+  {name:'新手', depth:2,  time:200,  slack:400, blunder:.35},
+  {name:'初級', depth:4,  time:400,  slack:150, blunder:.15},
+  {name:'中級', depth:6,  time:900,  slack:50,  blunder:0},
+  {name:'高級', depth:8,  time:4000, slack:0,   blunder:0},
+  {name:'大師', depth:20, time:8000, slack:0,   blunder:0}
 ];
 let level=1, sound=true;
+
+/* ---- 背景執行緒（讓高難度思考時畫面不卡住）---- */
+const pending={}; let reqId=0, worker=null, workerOK=false;
+(function(){
+  try{
+    const src=document.getElementById('engine').textContent+
+      "\nself.onmessage=function(ev){var d=ev.data;setBoard(d.board);"+
+      "self.postMessage({id:d.id,r:searchBest(d.side,d.depth,d.time)});};";
+    worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    worker.onmessage=e=>{ const cb=pending[e.data.id];
+      if(cb){ delete pending[e.data.id]; cb(e.data.r); } };
+    worker.onerror=()=>{ workerOK=false; };
+    workerOK=true;
+  }catch(e){ workerOK=false; }
+})();
+function think(side,depth,time,cb){
+  if(workerOK){
+    const id=++reqId; pending[id]=cb;
+    worker.postMessage({id,board:Array.from(B),side,depth,time});
+  }else{
+    setTimeout(()=>cb(searchBest(side,depth,time)),30);
+  }
+}
 let human=0;                 // 玩家執紅
 let turn=0, sel=-1, moves=[], history=[], busy=false, over=false;
 let lastMove=null, hintMove=null;
@@ -633,21 +830,20 @@ function doMove(mv){
 }
 
 function aiMove(){
-  coach('電腦在想棋⋯⋯','', '思');
-  setTimeout(()=>{
-    const L=LEVELS[level];
-    const res=searchBest(turn,L.depth,L.time);
+  const L=LEVELS[level];
+  coach(L.time>=2000? '電腦在認真想棋，稍等一下⋯⋯' : '電腦在想棋⋯⋯','','思');
+  think(turn,L.depth,L.time,res=>{
     if(!res){ busy=false; checkEnd(); return; }
     let mv=res.mv;
     if(L.blunder>0 && Math.random()<L.blunder){
       const all=legalMoves(turn); mv=all[Math.random()*all.length|0];
     }else if(L.slack>0 && res.list){
       const good=res.list.filter(x=>x[1]>=res.score-L.slack);
-      mv=good[Math.random()*good.length|0][0];
+      if(good.length) mv=good[Math.random()*good.length|0][0];
     }
     busy=false;
     doMove(mv);
-  },60);
+  });
 }
 
 function checkEnd(){
@@ -684,18 +880,18 @@ $('btnUndo').onclick=()=>{
 };
 $('btnHint').onclick=()=>{
   if(busy||over||turn!==human) return;
-  coach('讓我想想⋯⋯','','思');
-  setTimeout(()=>{
-    const res=searchBest(human,3,700);
+  busy=true; coach('讓我想想⋯⋯','','思');
+  think(human,7,1200,res=>{
+    busy=false;
     if(res){ hintMove=res.mv; sel=-1; moves=[]; render();
-      coach('試試看這一步：'+moveToChinese(res.mv),'', '提'); }
-  },50);
+      coach('試試看這一步：'+moveToChinese(res.mv),'','提'); }
+  });
 };
 $('btnLevel').onclick=()=>{
-  level=(level+1)%3;
+  level=(level+1)%LEVELS.length;
   $('btnLevel').textContent='難度：'+LEVELS[level].name;
   $('lvtag').textContent=LEVELS[level].name;
-  coach('難度換成「'+LEVELS[level].name+'」，下一步就會用新難度。');
+  coach('難度換成「'+LEVELS[level].name+'」'+(level>=3?'，電腦會想比較久':'')+'。');
 };
 $('btnSound').onclick=()=>{ sound=!sound; $('btnSound').textContent='音效：'+(sound?'開':'關'); };
 $('btnGuide').onclick=()=>$('sheet').classList.add('on');
