@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>翻翻棋．暗棋</title>
+<meta name="theme-color" content="#14201C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href='data:application/json;charset=utf-8,{"name":"翻翻棋．暗棋","short_name":"翻翻棋","display":"standalone","orientation":"portrait","background_color":"%2314201C","theme_color":"%2314201C","icons":[{"src":"data:image/svg%2Bxml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect width=%27192%27 height=%27192%27 fill=%27%2314201C%27/><circle cx=%2796%27 cy=%2796%27 r=%2764%27 fill=%27%237A5C2E%27 stroke=%27%23C8A64A%27 stroke-width=%278%27/><circle cx=%2796%27 cy=%2796%27 r=%2732%27 fill=%27none%27 stroke=%27%23C8A64A%27 stroke-width=%274%27 opacity=%270.6%27/></svg>","sizes":"192x192","type":"image/svg+xml"}]}'>
+<style>
+:root{
+  --lacquer:#14201C; --lacquer2:#1E2F29; --lacquer3:#274037;
+  --board1:#E7CFA3; --board2:#D8B983;
+  --cinnabar:#B23322; --jade:#4E9E7E; --gold:#C8A64A;
+  --ivory:#F8F0DE; --paper:#E9DFC9;
+  --serif:"Noto Serif CJK TC","Noto Serif TC","Songti TC","STSong","PMingLiU","SimSun",serif;
+  --sans:"Noto Sans CJK TC","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:radial-gradient(120% 60% at 50% 0%,#24382F 0%,var(--lacquer) 60%),var(--lacquer);
+  color:var(--paper);font-family:var(--sans);display:flex;flex-direction:column;align-items:center;
+  padding:env(safe-area-inset-top) 12px calc(12px + env(safe-area-inset-bottom));
+  overscroll-behavior:none;touch-action:manipulation}
+.wrap{width:100%;max-width:470px;display:flex;flex-direction:column;gap:10px;padding-top:10px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+h1{font-family:var(--serif);font-size:20px;font-weight:700;letter-spacing:.2em;margin:0;color:var(--ivory)}
+h1 span{color:var(--gold)}
+.tags{display:flex;gap:6px}
+.lvtag{font-size:12px;letter-spacing:.06em;color:#9CB3A8;border:1px solid #3A5449;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.lvtag.sr{color:#E8846F;border-color:#7A3226}
+.lvtag.sb{color:#DCE6E0;border-color:#546B60}
+
+.coach{display:flex;align-items:center;gap:10px;
+  background:linear-gradient(180deg,var(--lacquer3),var(--lacquer2));
+  border:1px solid #3C5B4E;border-left:4px solid var(--gold);
+  border-radius:10px;padding:10px 12px;min-height:56px}
+.coach b{font-family:var(--serif);font-size:22px;color:var(--gold);line-height:1;flex:none}
+.coach p{margin:0;font-size:14.5px;line-height:1.5}
+.coach.alert{border-left-color:var(--cinnabar)} .coach.alert b{color:#E8735E}
+.coach.win{border-left-color:var(--jade)} .coach.win b{color:#7BD3B0}
+
+/* 大小順序條 */
+.ladder{display:flex;align-items:center;justify-content:center;gap:3px;flex-wrap:wrap;
+  background:#101A16;border:1px solid #2E463C;border-radius:10px;padding:8px 6px}
+.ladder span{font-family:var(--serif);font-size:17px;color:var(--ivory)}
+.ladder i{font-style:normal;color:#5F776C;font-size:12px}
+.ladder .note{width:100%;text-align:center;font-family:var(--sans);font-size:11.5px;color:#7E9A8D;margin-top:4px}
+
+.boardbox{width:100%;aspect-ratio:2/1;background:linear-gradient(135deg,#F1DEBB,#D2B278);
+  border:5px solid #8A6B3E;border-radius:8px;padding:1.4%;
+  display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(4,1fr);gap:1.2%;
+  box-shadow:0 10px 26px rgba(0,0,0,.5)}
+.cell{position:relative;border-radius:4px;background:rgba(120,90,50,.13);
+  box-shadow:inset 0 1px 2px rgba(90,65,30,.28);display:flex;align-items:center;justify-content:center}
+.cell.last{background:rgba(200,166,74,.4)}
+.pc{width:92%;aspect-ratio:1;border:0;padding:0;border-radius:50%;cursor:pointer;position:relative;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-weight:700;font-size:min(5.4vw,25px);
+  background:radial-gradient(circle at 32% 28%,#FFFAF0 0%,var(--ivory) 45%,#DCCBA8 100%);
+  box-shadow:0 2px 3px rgba(0,0,0,.42),inset 0 -2px 3px rgba(120,90,50,.32),inset 0 2px 2px #fff}
+.pc::before{content:"";position:absolute;inset:9%;border-radius:50%;border:1.5px solid currentColor;opacity:.5}
+.pc.r{color:var(--cinnabar);text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.pc.b{color:#2A2622;text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.pc.back{background:radial-gradient(circle at 34% 30%,#9C7942 0%,#7A5C2E 55%,#5D4522 100%);color:#C8A64A}
+.pc.back::before{inset:16%;border-width:2px;opacity:.55}
+.pc.back::after{content:"";position:absolute;inset:34%;border-radius:50%;border:1.5px solid #C8A64A;opacity:.45}
+.pc.sel{box-shadow:0 0 0 3px var(--gold),0 3px 6px rgba(0,0,0,.5);z-index:2}
+.pc.target{box-shadow:0 0 0 3px var(--jade),0 2px 4px rgba(0,0,0,.4)}
+.dot{width:34%;aspect-ratio:1;border:0;padding:0;border-radius:50%;background:var(--jade);opacity:.85;cursor:pointer}
+
+.eat{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:#8FA79B}
+.eat > div{flex:1;background:#101A16;border:1px solid #2E463C;border-radius:10px;padding:6px 8px;min-height:44px}
+.eat h4{margin:0 0 3px;font-size:11.5px;font-weight:400;color:#6E877C}
+.mini{display:inline-block;font-family:var(--serif);font-size:15px;margin:0 2px;line-height:1.35}
+.mini.r{color:#E8846F} .mini.b{color:#C6D6CC}
+.eat em{font-style:normal;color:#4E655A}
+
+.row{display:flex;gap:8px}
+button.ui{flex:1;font-family:var(--sans);font-size:14px;color:var(--paper);
+  background:linear-gradient(180deg,#26382F,#1A2822);border:1px solid #3E5B4E;
+  border-radius:10px;padding:11px 6px;min-height:46px;cursor:pointer}
+button.ui:active{transform:translateY(1px)}
+button.ui.primary{background:linear-gradient(180deg,#8E2B1D,#6D1F14);border-color:#B23322;color:#FFE9E2}
+button.ui:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+.sheet{position:fixed;inset:0;background:rgba(6,12,10,.72);display:none;align-items:flex-end;z-index:20}
+.sheet.on{display:flex}
+.sheet .inner{width:100%;max-height:84vh;overflow:auto;background:var(--lacquer2);
+  border-top:2px solid var(--gold);border-radius:16px 16px 0 0;padding:16px 16px 28px}
+.sheet h2{font-family:var(--serif);letter-spacing:.14em;font-size:17px;margin:0 0 12px;color:var(--gold)}
+.card{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #2E463C}
+.card:last-of-type{border-bottom:0}
+.chip{flex:none;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-weight:700;font-size:21px;color:var(--cinnabar);
+  background:radial-gradient(circle at 32% 28%,#FFFAF0,#DCCBA8);box-shadow:inset 0 0 0 1.5px rgba(178,51,34,.45)}
+.chip.d{background:radial-gradient(circle at 34% 30%,#9C7942,#5D4522);color:#C8A64A;font-size:16px}
+.card h3{margin:0 0 3px;font-size:15px;color:var(--ivory)}
+.card p{margin:0;font-size:13.5px;line-height:1.6;color:#B9CCC2}
+.card .k{color:var(--gold)}
+.close{width:100%;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>翻翻棋<span>．</span>暗棋</h1>
+    <div class="tags"><span class="lvtag" id="sideTag">還沒決定</span><span class="lvtag" id="lvtag">初級</span></div>
+  </header>
+
+  <div class="coach" id="coach"><b id="coachIcon">翻</b><p id="coachText">先翻開一顆棋子。</p></div>
+
+  <div class="ladder">
+    <span>將</span><i>&gt;</i><span>士</span><i>&gt;</i><span>象</span><i>&gt;</i><span>車</span><i>&gt;</i>
+    <span>馬</span><i>&gt;</i><span>包</span><i>&gt;</i><span>卒</span>
+    <div class="note">卒可以吃將，將吃不到卒　·　包一定要隔一顆才能吃</div>
+  </div>
+
+  <div class="boardbox" id="board"></div>
+
+  <div class="eat">
+    <div><h4>被吃掉的紅子</h4><div id="eatTop"><em>還沒有</em></div></div>
+    <div><h4>被吃掉的黑子</h4><div id="eatBot"><em>還沒有</em></div></div>
+  </div>
+
+  <div class="row">
+    <button class="ui primary" id="btnNew">開新局</button>
+    <button class="ui" id="btnUndo">悔棋</button>
+  </div>
+  <div class="row">
+    <button class="ui" id="btnLevel">難度：初級</button>
+    <button class="ui" id="btnRule">怎麼玩</button>
+    <button class="ui" id="btnSound">音效：開</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="inner">
+    <h2>暗棋怎麼玩</h2>
+    <div class="card"><div class="chip d">?</div><div><h3>開局</h3>
+      <p>32 顆棋子全部蓋著隨機排好。<span class="k">第一個翻棋的人，翻到什麼顏色就是哪一方</span>，另一方就歸對手。</p></div></div>
+    <div class="card"><div class="chip">走</div><div><h3>每一步可以做什麼</h3>
+      <p>三選一：<span class="k">翻開</span>一顆蓋著的棋、把自己的棋<span class="k">走一格</span>（上下左右，不能斜走）、或是<span class="k">吃掉</span>旁邊的敵方棋子。</p></div></div>
+    <div class="card"><div class="chip">大</div><div><h3>誰吃得掉誰</h3>
+      <p>將 &gt; 士 &gt; 象 &gt; 車 &gt; 馬 &gt; 包 &gt; 卒，<span class="k">大的可以吃小的和一樣大的</span>。兩個例外：卒吃得到將，但將吃不到卒。</p></div></div>
+    <div class="card"><div class="chip">包</div><div><h3>包最特別</h3>
+      <p>包走路跟大家一樣一次一格，<span class="k">但吃子一定要隔著剛好一顆棋子</span>，隔著打過去，距離不限。包不用比大小，<span class="k">翻開的棋子牠都吃得掉</span>，連將也一樣。</p></div></div>
+    <div class="card"><div class="chip">暗</div><div><h3>蓋著的棋子</h3>
+      <p><span class="k">蓋著的棋子誰都不能吃，包也不行</span>，一定要先翻開才能吃。不過它會擋路，也可以當包的砲架。</p></div></div>
+    <div class="card"><div class="chip" style="color:#4E9E7E">勝</div><div><h3>怎樣算贏</h3>
+      <p>把對方的棋子<span class="k">全部吃光</span>，或是讓對方<span class="k">一步都走不動</span>，就贏了。很久都沒有人吃到子的話算和棋。</p></div></div>
+    <button class="ui close" id="btnClose">關起來</button>
+  </div>
+</div>
+
+<script id="engine">
+/* ============ 暗棋（翻棋）引擎 ============ */
+/* 棋盤 4 列 × 8 行，index = r*8+c
+   棋子編碼：紅方 = 階級(1..7)，黑方 = 階級+8
+   階級：7將 6士 5象 4車 3馬 2包 1卒   （數字越大越強） */
+
+const RANK_R=['','兵','炮','傌','俥','相','仕','帥'];
+const RANK_B=['','卒','包','馬','車','象','士','將'];
+const VALB=[0,12,30,45,55,65,80,100];
+const COUNTS=[0,5,2,2,2,2,2,1];
+const INFB=1e9, MATEB=30000;
+
+let cells=new Uint8Array(32);
+let hidArr=new Uint8Array(32);
+const aliveN=[16,16];
+const MBUF=new Int32Array(32*80), SBUF=new Int32Array(32*80);
+function recountAlive(){ aliveN[0]=aliveN[1]=0;
+  for(let i=0;i<32;i++){ const p=cells[i]; if(p) aliveN[sideB(p)]++; } }
+
+function fullSet(){
+  const a=[];
+  for(let rk=1;rk<=7;rk++) for(let n=0;n<COUNTS[rk];n++){ a.push(rk); a.push(rk+8); }
+  return a;
+}
+function shuffle(a,rng){
+  for(let i=a.length-1;i>0;i--){ const j=(rng()*(i+1))|0; const t=a[i];a[i]=a[j];a[j]=t; }
+  return a;
+}
+function newGame(rng){
+  const a=shuffle(fullSet(), rng||Math.random);
+  for(let i=0;i<32;i++){ cells[i]=a[i]; hidArr[i]=1; }
+  recountAlive();
+}
+
+const inBd=(r,c)=>r>=0&&r<4&&c>=0&&c<8;
+const DIRS=[[-1,0],[1,0],[0,-1],[0,1]];
+const sideB=p=>p<8?0:1;
+
+function canEat(ra,rd){
+  if(ra===2) return false;
+  if(ra===1) return rd===1||rd===7;
+  if(ra===7) return rd!==1;
+  return ra>=rd;
+}
+
+function genB(side, base){
+  let n=0;
+  for(let i=0;i<32;i++){
+    if(hidArr[i]){ MBUF[base+n++]=1024+i; continue; }
+    const p=cells[i];
+    if(!p||sideB(p)!==side) continue;
+    const r=(i/8)|0, c=i%8, rk=p&7;
+    for(const d of DIRS){
+      const nr=r+d[0], nc=c+d[1];
+      if(!inBd(nr,nc)) continue;
+      const j=nr*8+nc, q=cells[j];
+      if(!q){ MBUF[base+n++]=i*32+j; continue; }
+      if(rk===2) continue;
+      if(hidArr[j]) continue;
+      if(sideB(q)===side) continue;
+      if(canEat(rk,q&7)) MBUF[base+n++]=i*32+j;
+    }
+    if(rk===2){
+      for(const d of DIRS){
+        let nr=r+d[0], nc=c+d[1], screen=false;
+        while(inBd(nr,nc)){
+          const j=nr*8+nc, q=cells[j];
+          if(q){
+            if(!screen) screen=true;
+            else{ if(!hidArr[j] && sideB(q)!==side) MBUF[base+n++]=i*32+j; break; }
+          }
+          nr+=d[0]; nc+=d[1];
+        }
+      }
+    }
+  }
+  return n;
+}
+
+function makeB(mv){
+  if(mv>=1024){ hidArr[mv-1024]=0; return 255; }
+  const from=mv>>5, to=mv&31;
+  const info = cells[to] | (hidArr[to]?128:0);
+  if(cells[to]) aliveN[sideB(cells[to])]--;
+  cells[to]=cells[from]; cells[from]=0; hidArr[to]=0;
+  return info;
+}
+function unmakeB(mv,info){
+  if(info===255){ hidArr[mv-1024]=1; return; }
+  const from=mv>>5, to=mv&31;
+  cells[from]=cells[to];
+  cells[to]=info&127;
+  if(cells[to]) aliveN[sideB(cells[to])]++;
+  hidArr[to]=(info&128)?1:0;
+}
+const isCap=mv=> mv<1024 && cells[mv&31]!==0;
+
+function pieceVal(p,i,pawnEnemy){
+  const rk=p&7;
+  let v=VALB[rk];
+  if(rk===7 && pawnEnemy>0) v=62;
+  if(hidArr[i]) v=(v*85/100)|0;
+  return v;
+}
+function evalB(side){
+  let s=0;
+  const pawn=[0,0], alive=[0,0];
+  for(let i=0;i<32;i++){ const p=cells[i]; if(!p) continue;
+    const si=sideB(p); alive[si]++; if((p&7)===1) pawn[si]++; }
+  if(alive[0]===0) return side===0? -MATEB : MATEB;
+  if(alive[1]===0) return side===0? MATEB : -MATEB;
+  for(let i=0;i<32;i++){
+    const p=cells[i]; if(!p) continue;
+    const si=sideB(p);
+    const v=pieceVal(p,i,pawn[si^1]);
+    s += si===0? v : -v;
+  }
+  for(let i=0;i<32;i++){
+    const p=cells[i]; if(!p||hidArr[i]) continue;
+    const si=sideB(p), rk=p&7, r=(i/8)|0, c=i%8;
+    let hung=false;
+    for(const d of DIRS){
+      const nr=r+d[0],nc=c+d[1]; if(!inBd(nr,nc)) continue;
+      const j=nr*8+nc, q=cells[j];
+      if(!q||hidArr[j]||sideB(q)===si) continue;
+      if(canEat(q&7,rk)){ hung=true; break; }
+    }
+    if(hung){ const pen=(pieceVal(p,i,pawn[si^1])*20/100)|0; s += si===0? -pen : pen; }
+  }
+  // 殘局追擊：子少時獎勵主動接近吃得到的敵子，避免雙方原地打轉
+  let shown=0;
+  for(let i=0;i<32;i++) if(cells[i]&&!hidArr[i]) shown++;
+  if(shown<=10){
+    for(let i=0;i<32;i++){
+      const p=cells[i]; if(!p||hidArr[i]) continue;
+      const si=sideB(p), rk=p&7;
+      let bd=99;
+      for(let j=0;j<32;j++){
+        const q=cells[j]; if(!q||hidArr[j]||sideB(q)===si) continue;
+        if(rk!==2 && !canEat(rk,q&7)) continue;
+        const d=Math.abs(((i/8)|0)-((j/8)|0))+Math.abs((i%8)-(j%8));
+        if(d<bd) bd=d;
+      }
+      if(bd<99){ const bn=(10-bd)*2; s += si===0? bn : -bn; }
+    }
+  }
+  return side===0? s : -s;
+}
+
+let dlB=0, abortB=false, nodesB=0;
+function nowB(){ return (typeof performance!=='undefined')? performance.now() : Date.now(); }
+
+function ordB(base,n){
+  for(let i=0;i<n;i++){
+    const mv=MBUF[base+i];
+    if(mv>=1024) SBUF[base+i]=5;
+    else{ const q=cells[mv&31];
+      SBUF[base+i]= q? 1000+VALB[q&7]*8-VALB[cells[mv>>5]&7] : 0; }
+  }
+  for(let i=1;i<n;i++){
+    const m=MBUF[base+i], sv=SBUF[base+i]; let j=i-1;
+    while(j>=0 && SBUF[base+j]<sv){ MBUF[base+j+1]=MBUF[base+j]; SBUF[base+j+1]=SBUF[base+j]; j--; }
+    MBUF[base+j+1]=m; SBUF[base+j+1]=sv;
+  }
+}
+
+function qB(alpha,beta,side,ply){
+  if(((++nodesB)&511)===0 && nowB()>dlB) abortB=true;
+  if(abortB||ply>=24) return evalB(side);
+  let best=evalB(side);
+  if(best>=beta) return best;
+  if(best>alpha) alpha=best;
+  const base=ply*80, n=genB(side,base); ordB(base,n);
+  for(let k=0;k<n;k++){
+    const mv=MBUF[base+k];
+    if(!isCap(mv)) continue;
+    const info=makeB(mv);
+    const s=-qB(-beta,-alpha,side^1,ply+1);
+    unmakeB(mv,info);
+    if(abortB) return 0;
+    if(s>best){ best=s; if(s>alpha){ alpha=s; if(s>=beta) return s; } }
+  }
+  return best;
+}
+
+function nmB(depth,alpha,beta,side,ply){
+  if(((++nodesB)&511)===0 && nowB()>dlB) abortB=true;
+  if(abortB) return 0;
+  if(aliveN[side]===0) return -MATEB+ply;
+  if(aliveN[side^1]===0) return MATEB-ply;
+  if(depth<=0) return qB(alpha,beta,side,ply);
+  const base=ply*80, n=genB(side,base);
+  if(!n) return -MATEB+ply;
+  ordB(base,n);
+  let best=-INFB;
+  for(let k=0;k<n;k++){
+    const mv=MBUF[base+k];
+    const info=makeB(mv);
+    const s=-nmB(depth-1,-beta,-alpha,side^1,ply+1);
+    unmakeB(mv,info);
+    if(abortB) return 0;
+    if(s>best){ best=s; if(s>alpha){ alpha=s; if(s>=beta) break; } }
+  }
+  return best;
+}
+
+function searchBanqi(visible, hid, pool, side, nDet, depth, timeMs){
+  dlB=nowB()+timeMs; abortB=false; nodesB=0;
+  const sum={}, cnt={};
+  let dets=0, seed=((Math.random()*1e9)|0)||12345;
+  const rng=()=>{ seed^=seed<<13; seed|=0; seed^=seed>>>17; seed^=seed<<5; seed|=0;
+                  return ((seed>>>0)%100000)/100000; };
+  const hidIdx=[]; for(let i=0;i<32;i++) if(hid[i]) hidIdx.push(i);
+  if(hidIdx.length===0) nDet=1;            // 全部翻開就沒有推測的必要
+
+  for(let d=0; d<nDet; d++){
+    if(dets>0 && nowB()>dlB) break;
+    const p=shuffle(pool.slice(), rng);
+    cells.set(visible); hidArr.set(hid);
+    for(let k=0;k<hidIdx.length;k++) cells[hidIdx[k]]=p[k];
+    recountAlive();
+    const rn=genB(side,0);
+    if(!rn) return null;
+    ordB(0,rn);
+    const roots=[]; for(let k=0;k<rn;k++) roots.push(MBUF[k]);
+    const local={}; let ok=true;
+    for(const mv of roots){
+      const info=makeB(mv);
+      const s=-nmB(depth-1,-INFB,INFB,side^1,1);
+      unmakeB(mv,info);
+      if(abortB){ ok=false; break; }
+      local[mv]=s;
+    }
+    if(!ok) break;
+    for(const mv in local){ sum[mv]=(sum[mv]||0)+local[mv]; cnt[mv]=(cnt[mv]||0)+1; }
+    dets++;
+  }
+  if(!dets){
+    cells.set(visible); hidArr.set(hid);
+    const p=shuffle(pool.slice(), rng);
+    for(let k=0;k<hidIdx.length;k++) cells[hidIdx[k]]=p[k];
+    recountAlive();
+    const rn=genB(side,0);
+    if(!rn) return null;
+    ordB(0,rn);
+    return {mv:MBUF[0], score:0, list:[[MBUF[0],0]], dets:0, nodes:nodesB};
+  }
+  const list=[];
+  for(const mv in sum) list.push([+mv, sum[mv]/cnt[mv]]);
+  list.sort((a,b)=>b[1]-a[1]);
+  return {mv:list[0][0], score:list[0][1], list, dets, nodes:nodesB};
+}
+
+function nameOf(p){ return (p<8? RANK_R:RANK_B)[p&7]; }
+function setB(v,h){ cells.set(v); hidArr.set(h); recountAlive(); }
+function genList(side){ const n=genB(side,0), a=[]; for(let i=0;i<n;i++) a.push(MBUF[i]); return a; }
+function aliveCount(side){ let n=0; for(let i=0;i<32;i++){const p=cells[i]; if(p&&sideB(p)===side) n++;} return n; }
+function hasMove(side){ return genB(side,0)>0; }
+
+if(typeof module!=='undefined') module.exports={
+  cells,hidArr,newGame,genB,genList,makeB,unmakeB,evalB,searchBanqi,setB,
+  aliveCount,hasMove,nameOf,canEat,sideB,RANK_R,RANK_B,fullSet,shuffle};
+
+</script>
+
+<script id="ui">
+/* ============ 暗棋 畫面與互動 ============ */
+const $=id=>document.getElementById(id);
+const LEVELS=[
+  {name:'新手', det:1,  depth:2, time:250,  slack:60, blunder:.35},
+  {name:'初級', det:5,  depth:3, time:500,  slack:25, blunder:.15},
+  {name:'中級', det:12, depth:4, time:1000, slack:0,  blunder:.03},
+  {name:'高級', det:18, depth:5, time:2500, slack:0,  blunder:0},
+  {name:'大師', det:28, depth:6, time:5000, slack:0,  blunder:0}
+];
+let level=1, sound=true;
+let mySide=null, aiSide=null;      // 由第一次翻棋決定
+let mover=0;                       // 0=玩家 1=電腦
+let sel=-1, moves=[], busy=false, over=false, quiet=0;
+let history=[], lastMv=null, eaten=[[],[]];
+
+/* ---- 背景執行緒 ---- */
+const pending={}; let reqId=0, worker=null, workerOK=false;
+(function(){
+  try{
+    const src=document.getElementById('engine').textContent+
+      "\nself.onmessage=function(ev){var d=ev.data;self.postMessage({id:d.id,"+
+      "r:searchBanqi(new Uint8Array(d.vis),new Uint8Array(d.hid),d.pool,d.side,d.det,d.depth,d.time)});};";
+    worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    worker.onmessage=e=>{ const cb=pending[e.data.id];
+      if(cb){ delete pending[e.data.id]; cb(e.data.r); } };
+    worker.onerror=()=>{ workerOK=false; };
+    workerOK=true;
+  }catch(e){ workerOK=false; }
+})();
+function publicView(){
+  const vis=new Uint8Array(32), pool=[];
+  for(let i=0;i<32;i++){ if(hidArr[i]) pool.push(cells[i]); else vis[i]=cells[i]; }
+  pool.sort((a,b)=>a-b);                       // 排序後送出，不洩漏位置
+  return {vis, hid:Uint8Array.from(hidArr), pool};
+}
+function think(side,L,cb){
+  const p=publicView();
+  if(workerOK){
+    const id=++reqId; pending[id]=cb;
+    worker.postMessage({id, vis:Array.from(p.vis), hid:Array.from(p.hid),
+                        pool:p.pool, side, det:L.det, depth:L.depth, time:L.time});
+  }else{
+    setTimeout(()=>{
+      const sc=Uint8Array.from(cells), sh=Uint8Array.from(hidArr);
+      const r=searchBanqi(p.vis,p.hid,p.pool,side,L.det,L.depth,L.time);
+      setB(sc,sh);                              // 還原真實盤面
+      cb(r);
+    },30);
+  }
+}
+
+/* ---- 音效 ---- */
+let ac=null;
+function beep(f,d){
+  if(!sound) return;
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    if(ac.state==='suspended') ac.resume();
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='triangle'; o.frequency.value=f;
+    g.gain.setValueAtTime(.14,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);
+    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+d);
+  }catch(e){}
+}
+
+/* ---- 渲染 ---- */
+function render(){
+  const bd=$('board'); bd.innerHTML='';
+  const dests=new Set(moves.map(m=>m&31));
+  for(let i=0;i<32;i++){
+    const cell=document.createElement('div');
+    cell.className='cell';
+    if(lastMv!==null){
+      const t=lastMv>=1024? lastMv-1024 : (lastMv&31);
+      const f=lastMv>=1024? -1 : (lastMv>>5);
+      if(i===t||i===f) cell.classList.add('last');
+    }
+    const p=cells[i];
+    if(p){
+      const b=document.createElement('button');
+      if(hidArr[i]){ b.className='pc back'; b.setAttribute('aria-label','未翻開的棋子'); }
+      else{
+        b.className='pc '+(sideB(p)===0?'r':'b')+(i===sel?' sel':'');
+        b.textContent=nameOf(p);
+      }
+      if(dests.has(i)) b.classList.add('target');
+      b.onclick=()=>tap(i);
+      cell.appendChild(b);
+    }else if(dests.has(i)){
+      const d=document.createElement('button');
+      d.className='dot'; d.onclick=()=>tap(i);
+      cell.appendChild(d);
+    }
+    bd.appendChild(cell);
+  }
+  drawEaten();
+}
+function drawEaten(){
+  for(const s of [0,1]){
+    const el=$(s===0?'eatTop':'eatBot');
+    el.innerHTML = eaten[s].length
+      ? eaten[s].map(p=>`<span class="mini ${sideB(p)===0?'r':'b'}">${nameOf(p)}</span>`).join('')
+      : '<em>還沒有</em>';
+  }
+}
+function coach(t,mode,icon){
+  $('coachText').textContent=t;
+  $('coach').className='coach'+(mode?' '+mode:'');
+  $('coachIcon').textContent=icon||'棋';
+}
+
+/* ---- 互動 ---- */
+function tap(i){
+  if(busy||over||mover!==0) return;
+  if(moves.length){
+    const mv=moves.find(m=>(m&31)===i && (m>>5)===sel);
+    if(mv!==undefined){ doMove(mv); return; }
+  }
+  if(hidArr[i]){ doMove(1024+i); return; }        // 翻棋
+  const p=cells[i];
+  if(mySide!==null && p && sideB(p)===mySide){
+    sel=i;
+    const all=genList(mySide);
+    moves=all.filter(m=>m<1024 && (m>>5)===i);
+    if(!moves.length) coach('這顆'+nameOf(p)+'現在動不了，四周都被擋住了。',null,nameOf(p));
+    else coach(hintFor(p),null,nameOf(p));
+    beep(520,.05); render();
+  }else{
+    sel=-1; moves=[]; render();
+  }
+}
+function hintFor(p){
+  const rk=p&7;
+  if(rk===2) return '包要隔著一顆棋子才能吃，隔壁的吃不到，蓋著的也不能打。';
+  if(rk===1) return '卒只能吃卒和將，但它是唯一吃得到將的棋子。';
+  if(rk===7) return '將最大，可是吃不到卒，小心對方的卒。';
+  return nameOf(p)+'可以吃跟自己一樣大、或比自己小的棋子。';
+}
+
+function snapshot(){
+  return {c:Uint8Array.from(cells), h:Uint8Array.from(hidArr),
+          mover, mySide, aiSide, quiet, eaten:[eaten[0].slice(),eaten[1].slice()], lastMv};
+}
+function restore(s){
+  setB(s.c,s.h); mover=s.mover; mySide=s.mySide; aiSide=s.aiSide;
+  quiet=s.quiet; eaten=[s.eaten[0].slice(),s.eaten[1].slice()]; lastMv=s.lastMv;
+}
+
+function doMove(mv){
+  history.push(snapshot());
+  if(history.length>40) history.shift();
+  let msg='';
+  if(mv>=1024){
+    const p=cells[mv-1024];
+    if(mySide===null){                            // 第一次翻棋決定顏色
+      mySide = mover===0? sideB(p) : sideB(p)^1;
+      aiSide = mySide^1;
+      msg = '翻到'+nameOf(p)+'，所以你是'+(mySide===0?'紅方':'黑方')+'！';
+      $('sideTag').textContent = '你執'+(mySide===0?'紅':'黑');
+      $('sideTag').className='lvtag '+(mySide===0?'sr':'sb');
+    }
+    quiet=0; beep(700,.06);
+  }else{
+    const cap=cells[mv&31];
+    if(cap){ eaten[sideB(cap)].push(cap); quiet=0; beep(300,.08); }
+    else { quiet++; beep(560,.05); }
+  }
+  makeB(mv);
+  lastMv=mv; sel=-1; moves=[];
+  mover^=1;
+  render();
+  if(checkEnd()) return;
+  if(mover===1){ busy=true; setTimeout(aiMove,200); }
+  else if(msg) coach(msg,'win','翻');
+  else coach('換你了。可以翻一顆新的，或移動你的棋子。');
+}
+
+function aiMove(){
+  const L=LEVELS[level];
+  coach(L.time>=2000? '電腦在認真想⋯⋯':'電腦在想⋯⋯','','思');
+  think(aiSide,L,res=>{
+    busy=false;
+    if(!res){ checkEnd(); return; }
+    let mv=res.mv;
+    if(L.blunder>0 && Math.random()<L.blunder){
+      const all=genList(aiSide);
+      if(all.length) mv=all[Math.random()*all.length|0];
+    }else if(L.slack>0 && res.list && res.list.length){
+      const good=res.list.filter(x=>x[1]>=res.list[0][1]-L.slack);
+      if(good.length) mv=good[Math.random()*good.length|0][0];
+    }
+    doMove(mv);
+  });
+}
+
+function checkEnd(){
+  if(mySide===null) return false;
+  const side = mover===0? mySide : aiSide;
+  const lost = aliveCount(side)===0 || !hasMove(side);
+  if(lost){
+    over=true; moves=[]; sel=-1; render();
+    if(mover===0) coach('你的棋子被吃光了，這局輸了。再來一盤！','alert','惜');
+    else { coach('你贏了！把電腦的棋子全部吃光了。','win','勝'); beep(880,.12); setTimeout(()=>beep(1180,.16),130); }
+    return true;
+  }
+  if(quiet>=80){
+    over=true; coach('很久沒有人吃到子了，這局算和棋。','','和'); return true;
+  }
+  return false;
+}
+
+/* ---- 按鈕 ---- */
+$('btnNew').onclick=()=>{
+  newGame(); mySide=null; aiSide=null; mover=0; sel=-1; moves=[];
+  busy=false; over=false; quiet=0; history=[]; lastMv=null; eaten=[[],[]];
+  $('sideTag').textContent='還沒決定'; $('sideTag').className='lvtag';
+  render();
+  coach('先翻開一顆棋子。翻到什麼顏色，你就是那一方！','','翻');
+};
+$('btnUndo').onclick=()=>{
+  if(busy||!history.length) return;
+  over=false;
+  restore(history.pop());
+  while(mover!==0 && history.length) restore(history.pop());
+  sel=-1; moves=[]; render();
+  $('sideTag').textContent = mySide===null? '還沒決定' : '你執'+(mySide===0?'紅':'黑');
+  coach('退回上一步，重新想想。');
+};
+$('btnLevel').onclick=()=>{
+  level=(level+1)%LEVELS.length;
+  $('btnLevel').textContent='難度：'+LEVELS[level].name;
+  $('lvtag').textContent=LEVELS[level].name;
+  coach('難度換成「'+LEVELS[level].name+'」'+(level>=3?'，電腦會想比較久':'')+'。');
+};
+$('btnSound').onclick=()=>{ sound=!sound; $('btnSound').textContent='音效：'+(sound?'開':'關'); };
+$('btnRule').onclick=()=>$('sheet').classList.add('on');
+$('btnClose').onclick=()=>$('sheet').classList.remove('on');
+$('sheet').onclick=e=>{ if(e.target===$('sheet')) $('sheet').classList.remove('on'); };
+
+/* ---- 開場 ---- */
+newGame(); render();
+coach('先翻開一顆棋子。翻到什麼顏色，你就是那一方！','','翻');
+
+</script>
+</body>
+</html>
