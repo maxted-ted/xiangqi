@@ -68,6 +68,7 @@ h1 span{color:var(--gold)}
 .pc.r{color:var(--cinnabar);text-shadow:0 1px 0 rgba(255,255,255,.7),0 -1px 1px rgba(120,20,10,.35)}
 .pc.b{color:#2A2622;text-shadow:0 1px 0 rgba(255,255,255,.7),0 -1px 1px rgba(0,0,0,.3)}
 .pc.sel{box-shadow:0 0 0 3px var(--gold),0 3px 6px rgba(0,0,0,.5);z-index:3}
+.pc.flip{transform:translate(-50%,-50%) rotate(180deg)}
 .pc.checked{animation:warn .7s ease-in-out infinite}
 @keyframes warn{0%,100%{box-shadow:0 0 0 0 rgba(178,51,34,.9),0 2px 3px rgba(0,0,0,.45)}50%{box-shadow:0 0 0 7px rgba(178,51,34,0),0 2px 3px rgba(0,0,0,.45)}}
 .dot{position:absolute;width:4.4%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);
@@ -136,7 +137,7 @@ button.ui:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
     <button class="ui" id="btnHint">提示</button>
   </div>
   <div class="row">
-    <button class="ui" id="btnLevel">難度：初級</button>
+    <button class="ui" id="btnLevel">對手：初級</button>
     <button class="ui" id="btnGuide">棋子圖鑑</button>
     <button class="ui" id="btnSound">音效：開</button>
   </div>
@@ -650,6 +651,9 @@ const LEVELS=[
   {name:'大師', depth:20, time:8000, slack:0,   blunder:0}
 ];
 let level=1, sound=true;
+const TWO=LEVELS.length;              // level===TWO 代表雙人對戰
+const twoP=()=>level===TWO;
+const sideName=t=>t===0?'紅方':'黑方';
 
 /* ---- 背景執行緒（讓高難度思考時畫面不卡住）---- */
 const pending={}; let reqId=0, worker=null, workerOK=false;
@@ -755,6 +759,7 @@ function render(){
     const b=document.createElement('button');
     b.className='pc '+(side===0?'r':'b')+(i===sel?' sel':'');
     if(t===K && ((side===0&&redCheck)||(side===1&&blkCheck))) b.className+=' checked';
+    if(twoP() && side===1) b.className+=' flip';      // 面對面時朝向黑方玩家
     b.textContent=(side===0?NAME_R:NAME_B)[t];
     b.style.left=posL(i%9); b.style.top=posT((i/9)|0);
     b.onclick=()=>tap(i);
@@ -796,17 +801,19 @@ function drawLog(){
 
 /* ---- 互動 ---- */
 function tap(sq){
-  if(busy||over||turn!==human) return;
+  if(busy||over) return;
+  if(!twoP() && turn!==human) return;
+  const me = twoP()? turn : human;
   hintMove=null;
   const target=moves.find(mv=>mv%90===sq && ((mv/90)|0)===sel);
   if(target!==undefined){ doMove(target); return; }
   const p=B[sq];
-  if(p&&sideIdx(p)===human){
+  if(p&&sideIdx(p)===me){
     sel=sq;
-    moves=legalMoves(human).filter(mv=>((mv/90)|0)===sq);
+    moves=legalMoves(me).filter(mv=>((mv/90)|0)===sq);
     const t=typeOf(p);
-    coach(TIPS[t].short, null, (human===0?NAME_R:NAME_B)[t]);
-    if(!moves.length) coach('這顆'+((human===0?NAME_R:NAME_B)[t])+'現在走不動，換一顆試試。',null,(human===0?NAME_R:NAME_B)[t]);
+    coach(TIPS[t].short, null, (me===0?NAME_R:NAME_B)[t]);
+    if(!moves.length) coach('這顆'+((me===0?NAME_R:NAME_B)[t])+'現在走不動，換一顆試試。',null,(me===0?NAME_R:NAME_B)[t]);
     beep(520,.05); render();
   }else{
     sel=-1; moves=[]; render();
@@ -822,7 +829,12 @@ function doMove(mv){
   turn^=1;
   render(); drawLog();
   if(checkEnd()) return;
-  if(turn!==human){ busy=true; setTimeout(aiMove,220); }
+  if(!twoP() && turn!==human){ busy=true; setTimeout(aiMove,220); }
+  else if(twoP()){
+    const n=sideName(turn);
+    if(inCheck(turn)) coach('將軍！'+n+'的'+(turn===0?'帥':'將')+'被攻擊了，先救牠。','alert','危');
+    else coach('換 '+n+' 了。','', turn===0?'紅':'黑');
+  }
   else{
     if(inCheck(human)) coach('將軍！你的'+(human===0?'帥':'將')+'被攻擊了，先救牠。','alert','危');
     else coach('換你了，點一顆棋子看看能走哪裡。');
@@ -850,7 +862,11 @@ function checkEnd(){
   const ms=legalMoves(turn);
   if(ms.length===0){
     over=true; moves=[]; render();
-    if(turn===human) coach('這局被將死了。看看棋譜想想哪一步可以改，再來一盤！','alert','惜');
+    if(twoP()){
+      coach(sideName(turn^1)+'贏了！'+sideName(turn)+'被將死，沒有棋可以走了。','win','勝');
+      beep(880,.12); setTimeout(()=>beep(1180,.16),130);
+    }
+    else if(turn===human) coach('這局被將死了。看看棋譜想想哪一步可以改，再來一盤！','alert','惜');
     else { coach('太厲害了，你贏了這一局！','win','勝'); beep(880,.12); setTimeout(()=>beep(1180,.16),130); }
     return true;
   }
@@ -863,13 +879,15 @@ $('btnNew').onclick=()=>{
   setupInitial(); turn=0; sel=-1; moves=[]; history=[]; over=false; busy=false;
   lastMove=null; hintMove=null;
   render(); drawLog();
-  coach('紅方先走。點一顆紅色棋子，綠點就是牠能去的地方。');
+  refreshMode();
+  coach(twoP()? '雙人對戰開始，紅方先走。'
+              : '紅方先走。點一顆紅色棋子，綠點就是牠能去的地方。','',twoP()?'人':'帥');
 };
 $('btnUndo').onclick=()=>{
   if(busy||!history.length) return;
   over=false;
   // 退回到「輪到玩家」的那一刻：對手剛走過就退兩步，否則退一步
-  const back = (history[history.length-1].side!==human && history.length>=2) ? 2 : 1;
+  const back = twoP()? 1 : ((history[history.length-1].side!==human && history.length>=2) ? 2 : 1);
   const keep = history.slice(0, history.length-back);
   setupInitial(); turn=0; history=[];
   for(const h of keep){ pushLog(h.mv,turn); make(h.mv); turn^=1; }
@@ -879,19 +897,26 @@ $('btnUndo').onclick=()=>{
   coach('好，退回去重想一步。');
 };
 $('btnHint').onclick=()=>{
-  if(busy||over||turn!==human) return;
+  if(busy||over) return;
+  if(!twoP() && turn!==human) return;
   busy=true; coach('讓我想想⋯⋯','','思');
-  think(human,7,1200,res=>{
+  think(turn,7,1200,res=>{
     busy=false;
     if(res){ hintMove=res.mv; sel=-1; moves=[]; render();
       coach('試試看這一步：'+moveToChinese(res.mv),'','提'); }
   });
 };
+function modeName(){ return twoP()? '雙人' : LEVELS[level].name; }
+function refreshMode(){
+  $('btnLevel').textContent='對手：'+modeName();
+  $('lvtag').textContent=modeName();
+}
 $('btnLevel').onclick=()=>{
-  level=(level+1)%LEVELS.length;
-  $('btnLevel').textContent='難度：'+LEVELS[level].name;
-  $('lvtag').textContent=LEVELS[level].name;
-  coach('難度換成「'+LEVELS[level].name+'」'+(level>=3?'，電腦會想比較久':'')+'。');
+  level=(level+1)%(LEVELS.length+1);
+  refreshMode();
+  if(twoP()) coach('切換成雙人對戰，兩個人輪流在同一台裝置上下棋。紅方先走。','','人');
+  else coach('對手換成「'+LEVELS[level].name+'」'+(level>=3?'，電腦會想比較久':'')+'。');
+  if(!twoP() && !over && turn!==human && !busy){ busy=true; setTimeout(aiMove,220); }
 };
 $('btnSound').onclick=()=>{ sound=!sound; $('btnSound').textContent='音效：'+(sound?'開':'關'); };
 $('btnGuide').onclick=()=>$('sheet').classList.add('on');

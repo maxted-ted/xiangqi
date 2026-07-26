@@ -67,6 +67,7 @@ h1 span{color:var(--gold)}
 .pc.back::before{inset:16%;border-width:2px;opacity:.55}
 .pc.back::after{content:"";position:absolute;inset:34%;border-radius:50%;border:1.5px solid #C8A64A;opacity:.45}
 .pc.sel{box-shadow:0 0 0 3px var(--gold),0 3px 6px rgba(0,0,0,.5);z-index:2}
+.pc.flip{transform:rotate(180deg)}
 .pc.target{box-shadow:0 0 0 3px var(--jade),0 2px 4px rgba(0,0,0,.4)}
 .dot{width:34%;aspect-ratio:1;border:0;padding:0;border-radius:50%;background:var(--jade);opacity:.85;cursor:pointer}
 
@@ -129,7 +130,7 @@ button.ui:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
     <button class="ui" id="btnUndo">悔棋</button>
   </div>
   <div class="row">
-    <button class="ui" id="btnLevel">難度：初級</button>
+    <button class="ui" id="btnLevel">對手：初級</button>
     <button class="ui" id="btnRule">怎麼玩</button>
     <button class="ui" id="btnSound">音效：開</button>
   </div>
@@ -430,6 +431,10 @@ const LEVELS=[
   {name:'大師', det:28, depth:6, time:5000, slack:0,  blunder:0}
 ];
 let level=1, sound=true;
+const TWO=LEVELS.length;
+const twoP=()=>level===TWO;
+const sideOf=m=> m===0? mySide : aiSide;   // 雙人時 aiSide 就是第二位玩家
+const sideLabel=sd=> sd===0?'紅方':'黑方';
 let mySide=null, aiSide=null;      // 由第一次翻棋決定
 let mover=0;                       // 0=玩家 1=電腦
 let sel=-1, moves=[], busy=false, over=false, quiet=0;
@@ -504,6 +509,7 @@ function render(){
       if(hidArr[i]){ b.className='pc back'; b.setAttribute('aria-label','未翻開的棋子'); }
       else{
         b.className='pc '+(sideB(p)===0?'r':'b')+(i===sel?' sel':'');
+        if(twoP() && mySide!==null && sideB(p)===aiSide) b.className+=' flip';
         b.textContent=nameOf(p);
       }
       if(dests.has(i)) b.classList.add('target');
@@ -534,16 +540,18 @@ function coach(t,mode,icon){
 
 /* ---- 互動 ---- */
 function tap(i){
-  if(busy||over||mover!==0) return;
+  if(busy||over) return;
+  if(!twoP() && mover!==0) return;
+  const me = sideOf(mover);
   if(moves.length){
     const mv=moves.find(m=>(m&31)===i && (m>>5)===sel);
     if(mv!==undefined){ doMove(mv); return; }
   }
   if(hidArr[i]){ doMove(1024+i); return; }        // 翻棋
   const p=cells[i];
-  if(mySide!==null && p && sideB(p)===mySide){
+  if(me!==null && p && sideB(p)===me){
     sel=i;
-    const all=genList(mySide);
+    const all=genList(me);
     moves=all.filter(m=>m<1024 && (m>>5)===i);
     if(!moves.length) coach('這顆'+nameOf(p)+'現在動不了，四周都被擋住了。',null,nameOf(p));
     else coach(hintFor(p),null,nameOf(p));
@@ -578,9 +586,10 @@ function doMove(mv){
     if(mySide===null){                            // 第一次翻棋決定顏色
       mySide = mover===0? sideB(p) : sideB(p)^1;
       aiSide = mySide^1;
-      msg = '翻到'+nameOf(p)+'，所以你是'+(mySide===0?'紅方':'黑方')+'！';
-      $('sideTag').textContent = '你執'+(mySide===0?'紅':'黑');
-      $('sideTag').className='lvtag '+(mySide===0?'sr':'sb');
+      msg = twoP()
+        ? '翻到'+nameOf(p)+'，所以先手是'+sideLabel(mySide)+'，另一位就是'+sideLabel(aiSide)+'。'
+        : '翻到'+nameOf(p)+'，所以你是'+sideLabel(mySide)+'！';
+      updateSideTag();
     }
     quiet=0; beep(700,.06);
   }else{
@@ -593,8 +602,11 @@ function doMove(mv){
   mover^=1;
   render();
   if(checkEnd()) return;
-  if(mover===1){ busy=true; setTimeout(aiMove,200); }
+  updateSideTag();
+  if(!twoP() && mover===1){ busy=true; setTimeout(aiMove,200); }
   else if(msg) coach(msg,'win','翻');
+  else if(twoP()) coach('換 '+sideLabel(sideOf(mover))+' 了。可以翻一顆新的，或移動自己的棋子。','',
+                        sideOf(mover)===0?'紅':'黑');
   else coach('換你了。可以翻一顆新的，或移動你的棋子。');
 }
 
@@ -622,7 +634,11 @@ function checkEnd(){
   const lost = aliveCount(side)===0 || !hasMove(side);
   if(lost){
     over=true; moves=[]; sel=-1; render();
-    if(mover===0) coach('你的棋子被吃光了，這局輸了。再來一盤！','alert','惜');
+    if(twoP()){
+      coach(sideLabel(sideOf(mover^1))+'贏了！'+sideLabel(side)+'已經沒有棋可以動了。','win','勝');
+      beep(880,.12); setTimeout(()=>beep(1180,.16),130);
+    }
+    else if(mover===0) coach('你的棋子被吃光了，這局輸了。再來一盤！','alert','惜');
     else { coach('你贏了！把電腦的棋子全部吃光了。','win','勝'); beep(880,.12); setTimeout(()=>beep(1180,.16),130); }
     return true;
   }
@@ -636,24 +652,39 @@ function checkEnd(){
 $('btnNew').onclick=()=>{
   newGame(); mySide=null; aiSide=null; mover=0; sel=-1; moves=[];
   busy=false; over=false; quiet=0; history=[]; lastMv=null; eaten=[[],[]];
-  $('sideTag').textContent='還沒決定'; $('sideTag').className='lvtag';
+  refreshMode(); updateSideTag();
   render();
-  coach('先翻開一顆棋子。翻到什麼顏色，你就是那一方！','','翻');
+  coach(twoP()? '先手先翻一顆。翻到什麼顏色，先手就是那一方！'
+              : '先翻開一顆棋子。翻到什麼顏色，你就是那一方！','','翻');
 };
 $('btnUndo').onclick=()=>{
   if(busy||!history.length) return;
   over=false;
   restore(history.pop());
-  while(mover!==0 && history.length) restore(history.pop());
+  if(!twoP()) while(mover!==0 && history.length) restore(history.pop());
   sel=-1; moves=[]; render();
-  $('sideTag').textContent = mySide===null? '還沒決定' : '你執'+(mySide===0?'紅':'黑');
+  updateSideTag();
   coach('退回上一步，重新想想。');
 };
+function modeName(){ return twoP()? '雙人' : LEVELS[level].name; }
+function refreshMode(){
+  $('btnLevel').textContent='對手：'+modeName();
+  $('lvtag').textContent=modeName();
+}
+function updateSideTag(){
+  const el=$('sideTag');
+  if(mySide===null){ el.textContent='還沒決定'; el.className='lvtag'; return; }
+  if(twoP()){ const sd=sideOf(mover);
+    el.textContent='輪'+sideLabel(sd); el.className='lvtag '+(sd===0?'sr':'sb'); }
+  else { el.textContent='你執'+(mySide===0?'紅':'黑');
+    el.className='lvtag '+(mySide===0?'sr':'sb'); }
+}
 $('btnLevel').onclick=()=>{
-  level=(level+1)%LEVELS.length;
-  $('btnLevel').textContent='難度：'+LEVELS[level].name;
-  $('lvtag').textContent=LEVELS[level].name;
-  coach('難度換成「'+LEVELS[level].name+'」'+(level>=3?'，電腦會想比較久':'')+'。');
+  level=(level+1)%(LEVELS.length+1);
+  refreshMode(); updateSideTag();
+  if(twoP()) coach('切換成雙人對戰，兩個人輪流在同一台裝置上玩。','','人');
+  else coach('對手換成「'+LEVELS[level].name+'」'+(level>=3?'，電腦會想比較久':'')+'。');
+  if(!twoP() && !over && mover===1 && !busy){ busy=true; setTimeout(aiMove,200); }
 };
 $('btnSound').onclick=()=>{ sound=!sound; $('btnSound').textContent='音效：'+(sound?'開':'關'); };
 $('btnRule').onclick=()=>$('sheet').classList.add('on');
