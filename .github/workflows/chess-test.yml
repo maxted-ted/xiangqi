@@ -1,0 +1,24 @@
+name: chess-test
+
+on:
+  push:
+    branches: [main]
+    paths: ['chess/**', '.github/workflows/chess-test.yml']
+  pull_request:
+    paths: ['chess/**', '.github/workflows/chess-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node chess/test.js
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node chess/test.js

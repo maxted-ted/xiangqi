@@ -54,6 +54,8 @@ python3 -m http.server 8000
 node chess/test.js
 ```
 
+每次 push 到 `main` 或開 PR（有改到 `chess/`）時，GitHub Actions（`.github/workflows/chess-test.yml`）會自動跑這支測試。
+
 測試會直接從 `index.html` 抽出 `<script id="engine">` 執行（遊戲和測試用的是同一份引擎），檢查：
 
 - perft：起始局面 depth 1–4 = 20 / 400 / 8902 / 197281，以及 Kiwipete、Position 3／4／5 等標準測試局面
